@@ -32,7 +32,7 @@ namespace BangazonWorkForceManagement.Models
         public Department Department { get; set; }
 
         [Display(Name = "Computer")]
-        public int? CurrentComputerId { get; set; }
+        public int CurrentComputerId { get; set; }
         public Computer Computer { get; set; }
     }
 }

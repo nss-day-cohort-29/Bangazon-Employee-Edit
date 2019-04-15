@@ -1,28 +1,33 @@
-﻿using BangazonAPI.Models;
-using Microsoft.AspNetCore.Mvc.Rendering;
+﻿using Microsoft.AspNetCore.Mvc.Rendering;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace BangazonWorkForceManagement.Models.ViewModels
 {
     public class EmployeeEditViewModel
     {
-        private readonly int _employeeId;
         private readonly string _connectionString;
 
+        // This constructor is used when ASP.NET creates an instance of this class 
+        //  to be passed as a parameter to the "POST" Edit method.
         public EmployeeEditViewModel() { }
 
+        //  inside the "GET" Edit method.
+        /// <summary>
+        /// This constructor is used when WE create an instance of this class
+        ///  inside the "GET" Edit method.
+        /// </summary>
+        /// <param name="employeeId">The id of the employee being edited</param>
+        /// <param name="connectionString">The connection string to our SQL Database</param>
         public EmployeeEditViewModel(int employeeId, string connectionString)
         {
-            _employeeId = employeeId;
             _connectionString = connectionString;
 
             AllDepartments = GetAllDepartments();
-            AvailableTrainingPrograms = GetFutureTrainingPrograms(_employeeId);
-            AvailableComputers = GetAvailableComputersForEmployee(_employeeId);
+            AvailableTrainingPrograms = GetAvailableFutureTrainingPrograms(employeeId);
+            AvailableComputers = GetAvailableComputersForEmployee(employeeId);
         }
 
         private SqlConnection Connection
@@ -82,13 +87,19 @@ namespace BangazonWorkForceManagement.Models.ViewModels
                     new SelectListItem($"{c.Manufacturer} {c.Make}", c.Id.ToString())
                 ).ToList();
 
+                // Insert a blank record for unassigning a computer without assigning a new computer.
                 options.Insert(0, new SelectListItem("--No Computer--", "0"));
 
                 return options;
             }
         }
 
-        public List<Department> GetAllDepartments()
+        /// <summary>
+        ///  Get all the departments in the database
+        ///   Used to populate the Department select box on the Edit view
+        /// </summary>
+        /// <returns>All the Departments</returns>
+        private List<Department> GetAllDepartments()
         {
             using (var conn = Connection)
             {
@@ -114,7 +125,19 @@ namespace BangazonWorkForceManagement.Models.ViewModels
             }
         }
 
-        public List<TrainingProgram> GetFutureTrainingPrograms(int employeId)
+        /// <summary>
+        ///  Gets all the Training Programs that this employee MIGHT be enrolled in.
+        /// </summary>
+        /// <param name="employeId"></param>
+        /// <returns>
+        ///  Training programs that meet the following criteria:
+        ///   In the future
+        ///    AND
+        ///   Is NOT full (enrollment has not exceeded MaxAttendees)
+        ///    OR
+        ///   In which the given Employee is ALREADY enrolled
+        /// </returns>
+        private List<TrainingProgram> GetAvailableFutureTrainingPrograms(int employeId)
         {
             using (var conn = Connection)
             {
@@ -128,10 +151,10 @@ namespace BangazonWorkForceManagement.Models.ViewModels
                                                         GROUP BY TrainingProgramId) tpCount
                                                       ON tp.id = tpCount.TrainingProgramId
                                                LEFT JOIN EmployeeTraining et ON tp.id = et.TrainingProgramId
-                                         WHERE tp.StartDate > SYSDATETIME()
-                                               AND (tpCount.AttendeeCount IS NULL
-                                                    OR tpCount.AttendeeCount < tp.MaxAttendees
-                                                    OR et.EmployeeId = @EmployeeId)";
+                                         WHERE tp.StartDate > SYSDATETIME()  -- In the future
+                                               AND (tpCount.AttendeeCount IS NULL  -- No one has enrolled
+                                                    OR tpCount.AttendeeCount < tp.MaxAttendees  -- Has room for another another attendee
+                                                    OR et.EmployeeId = @EmployeeId)  -- Is already being attended by this employee";
                     cmd.Parameters.Add(new SqlParameter("@EmployeeId", employeId));
                     var reader = cmd.ExecuteReader();
 
@@ -153,7 +176,21 @@ namespace BangazonWorkForceManagement.Models.ViewModels
             }
         }
 
-        public List<Computer> GetAvailableComputersForEmployee(int employeeId)
+        /// <summary>
+        ///  Get all the computers that this Employee MAY be assigned.
+        /// </summary>
+        /// <param name="employeeId"></param>
+        /// <returns>
+        ///  Computers that meet the following criteria:
+        ///   NOT Decommissioned
+        ///    AND
+        ///   NOT currently assigned to another employee
+        ///    OR
+        ///   Never assigned to anyone
+        ///    OR
+        ///   Currently assigned to this employee
+        /// </returns>
+        private List<Computer> GetAvailableComputersForEmployee(int employeeId)
         {
             using (var conn = Connection)
             {
@@ -182,9 +219,6 @@ namespace BangazonWorkForceManagement.Models.ViewModels
                             Manufacturer = reader.GetString(reader.GetOrdinal("Manufacturer")),
                             Make = reader.GetString(reader.GetOrdinal("Make")),
                             PurchaseDate = reader.GetDateTime(reader.GetOrdinal("PurchaseDate")),
-                            DecommissionDate = reader.IsDBNull(reader.GetOrdinal("DecomissionDate"))
-                                ? (DateTime?) null
-                                : reader.GetDateTime(reader.GetOrdinal("DecomissionDate")),
                         });
                     }
                     reader.Close();
@@ -192,6 +226,5 @@ namespace BangazonWorkForceManagement.Models.ViewModels
                 }
             }
         }
-
     }
 }

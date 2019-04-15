@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
-using System.Linq;
-using System.Threading.Tasks;
-using BangazonWorkForceManagement.Data;
 using BangazonWorkForceManagement.Models;
 using BangazonWorkForceManagement.Models.ViewModels;
 using BangazonWorkForceManagement.Models.Views;
@@ -16,12 +13,10 @@ namespace BangazonWorkForceManagement.Controllers
     public class EmployeesController : Controller
     {
         private readonly IConfiguration _config;
-        private LookupDataRepository _repository;
 
         public EmployeesController(IConfiguration config)
         {
             _config = config;
-            _repository = new LookupDataRepository(_config.GetConnectionString("DefaultConnection"));
         }
 
         public SqlConnection Connection
@@ -246,7 +241,7 @@ namespace BangazonWorkForceManagement.Controllers
                             }
                             else
                             {
-                                viewModel.Employee.CurrentComputerId = null;
+                                viewModel.Employee.CurrentComputerId = 0;
                             }
                         }
                         if (!reader.IsDBNull(reader.GetOrdinal("TrainingProgramId")))
@@ -278,13 +273,13 @@ namespace BangazonWorkForceManagement.Controllers
                 conn.Open();
                 using (var cmd = conn.CreateCommand())
                 {
+                    // Transaction????
+                    //  https://docs.microsoft.com/en-us/dotnet/framework/data/adonet/local-transactions
                     using (var transaction = conn.BeginTransaction())
                     {
                         cmd.Transaction = transaction;
                         try
                         {
-
-
                             // Employee
                             cmd.CommandText = @"UPDATE Employee 
                                                    SET FirstName = @FirstName,
@@ -309,12 +304,16 @@ namespace BangazonWorkForceManagement.Controllers
                                                        AND UnassignDate IS NULL";
                             cmd.Parameters.Add(new SqlParameter("@EmployeeId", id));
                             var reader = cmd.ExecuteReader();
+
+                            // If they don't have a computer, we use 0 as a default id value
+                            //  so...if we got some data, use it, otherwise 0
                             var currentComputerId = reader.Read()
                                 ? reader.GetInt32(reader.GetOrdinal("ComputerId"))
                                 : 0;
                             reader.Close();
                             cmd.Parameters.Clear();
 
+                            // Did their computer change?
                             if (currentComputerId != viewModel.Employee.CurrentComputerId)
                             {
 
@@ -322,6 +321,7 @@ namespace BangazonWorkForceManagement.Controllers
                                                        SET UnassignDate = SYSDATETIME()
                                                      WHERE EmployeeId = @EmployeeId AND UnassignDate IS NULL;";
 
+                                // Do they have a new computer or did they just have their old one unassigned.
                                 if (viewModel.Employee.CurrentComputerId != 0)
                                 {
                                     cmd.CommandText += @" INSERT INTO ComputerEmployee (EmployeeId, ComputerId, AssignDate)
@@ -337,6 +337,9 @@ namespace BangazonWorkForceManagement.Controllers
 
 
                             // Training Programs
+
+                            // Delete everything, then rebuild...
+
                             cmd.CommandText = "DELETE FROM EmployeeTraining WHERE EmployeeId = @EmployeeId";
                             cmd.Parameters.Add(new SqlParameter("@EmployeeId", id));
                             cmd.ExecuteNonQuery();
